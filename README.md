@@ -1,6 +1,6 @@
 # RunLoop
 1. NSRunLoop和CFRunLoopRef：CFRunLoopRef更加底层，NSRunLoop是对CFRunLoopRef的封装
-2. 与线程的关系：每条线程都有唯一的与之对应的RunLoop；主线程的RunLoop自动创建，子线程的RunLoop需要手动创建；主要用来负责响应需要处理的各种事件和消息
+2. 与线程的关系：每条线程都有唯一的与之对应的RunLoop；主线程的RunLoop自动创建，子线程的RunLoop需要手动创建，```[[NSRunLoop currentRunLoop] run]```；主要用来负责响应需要处理的各种事件和消息
 3. 获取RunLoop对象
     ```
     [NSRunLoop currentRunLoop];
