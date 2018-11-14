@@ -1,5 +1,5 @@
 # RunLoop
-学习ibireme的文章[深入理解RunLoop](https://blog.ibireme.com/2015/05/18/runloop/)，对RunLoop有了大致的了解。以下内容对原文进行了摘抄。
+学习ibireme的文章[深入理解RunLoop](https://blog.ibireme.com/2015/05/18/runloop/)，对RunLoop有了大致的了解。以下内容对原文进行了摘抄。
 ## 基本概要
 一般来讲，一个线程一次只能执行一个任务，执行完成后线程就会退出。我们需要一个机制，让线程能随时处理事件但并不退出。逻辑是这样的：
 ```
@@ -11,7 +11,7 @@ function loop() {
     } while (message != quit);
 }
 ```
-这种模型通常被称作 Event Loop，在iOS中称为RunLoop。这种模型的关键在于：如何管理事件/消息，如何让线程在没有处理消息时休眠以避免资源占用、在有消息到来时立刻被唤醒。
+这种模型通常被称作 Event Loop，在iOS中称为RunLoop。这种模型的关键在于：如何管理事件/消息，如何让线程在没有处理消息时休眠以避免资源占用、在有消息到来时立刻被唤醒。
 
 所以，RunLoop 实际上就是一个对象，这个对象管理了其需要处理的事件和消息，并提供了一个入口函数来执行上面 Event Loop 的逻辑。线程执行了这个函数后，就会一直处于这个函数内部 “接受消息->等待->处理” 的循环中，直到这个循环结束（比如传入 quit 的消息），函数返回。
 
@@ -72,7 +72,7 @@ CFRunLoopRef CFRunLoopGetCurrent() {
 1. CFRunLoopObserverRef
 
 ![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_0.png)
-一个 RunLoop 包含若干个 Mode，每个 Mode 又包含若干个 Source/Timer/Observer。每次调用 RunLoop 的主函数时，只能指定其中一个 Mode，这个Mode被称作 CurrentMode。如果需要切换 Mode，只能退出 Loop，再重新指定一个 Mode 进入。这样做主要是为了分隔开不同组的 Source/Timer/Observer，让其互不影响
+一个 RunLoop 包含若干个 Mode，每个 Mode 又包含若干个 Source/Timer/Observer。每次调用 RunLoop 的主函数时，只能指定其中一个 Mode，这个Mode被称作 CurrentMode。如果需要切换 Mode，只能退出 Loop，再重新指定一个 Mode 进入。这样做主要是为了分隔开不同组的 Source/Timer/Observer，让其互不影响
 ### CFRunLoopModeRef
 * 并没有对外暴露，只是通过 CFRunLoopRef 的接口进行了封装
 ### CFRunLoopSourceRef
@@ -123,9 +123,9 @@ struct __CFRunLoop {
 有时你需要一个 Timer，在两个 Mode 中都能得到回调，一种办法就是将这个 Timer 分别加入这两个 Mode。还有一种方式，就是将 Timer 加入到顶层的 RunLoop 的 “commonModeItems” 中。”commonModeItems” 被 RunLoop 自动更新到所有具有”Common”属性的 Mode 里去。
 ## 内部逻辑
 ![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_1.png)
-内部代码请看原文。实际上RunLoop内部是一个 do-while 循环。当你调用 CFRunLoopRun() 时，线程就会一直停留在这个循环里；直到超时或被手动停止，该函数才会返回。
+内部代码请看原文。实际上RunLoop内部是一个 do-while 循环。当你调用 CFRunLoopRun() 时，线程就会一直停留在这个循环里；直到超时或被手动停止，该函数才会返回。
 ## 底层实现
-详细的介绍见原文
+详细的介绍见原文
 
 总的来说就是，Mach 的对象间不能直接调用，只能通过消息传递的方式实现对象间的通信。”消息”是 Mach 中最基础的概念，消息在两个端口 (port) 之间传递，这就是 Mach 的 IPC (进程间通信) 的核心。
 
@@ -169,7 +169,7 @@ GCD 提供的某些接口也用到了 RunLoop， 例如 dispatch_async()。
 
 当调用 dispatch_async(dispatch_get_main_queue(), block) 时，libDispatch 会向主线程的 RunLoop 发送消息，RunLoop会被唤醒，并从消息中取得这个 block，并在回调 __CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__() 里执行这个 block。但这个逻辑仅限于 dispatch 到主线程，dispatch 到其他线程仍然是由 libDispatch 处理的。
 ## 实际应用举例
-### AFNetworking(这个例子应该是3.0之前的，底层是通过封装NSURLConnection实现的，不过实现思想还是很重要的)
+### AFNetworking(这个例子应该是3.0之前的，底层是通过封装NSURLConnection实现的，不过实现思想还是很重要的)
 AFURLConnectionOperation 这个类是基于 NSURLConnection 构建的，其希望能在后台线程接收 Delegate 回调。为此 AFNetworking 单独创建了一个线程，并在这个线程中启动了一个 RunLoop：
 ```objc
 + (void)networkRequestThreadEntryPoint:(id)__unused object {
