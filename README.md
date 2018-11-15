@@ -79,7 +79,7 @@ CFRunLoopRef CFRunLoopGetCurrent() {
 * 是事件产生的地方
 * Source分为Source0 和 Source1
     * Source0只包含一个回调，并不能主动触发事件。使用时需要先手动将其标记为待处理，然后唤醒RunLoop进行处理。
-    * Source1包含一个回调和mach_port，能主动唤醒RunLoop，用于通过内核和其他线程相互发送消息
+    * Source1包含一个回调和mach_port，能主动唤醒RunLoop，用于通过内核和其他线程相互发送消息
 ### CFRunLoopTimerRef
 * 基于时间的触发器，它和 NSTimer 是toll-free bridged 的，可以混用
 * 包含一个时间长度和一个回调（函数指针）。当其加入到 RunLoop 时，RunLoop会注册对应的时间点，当时间点到时，RunLoop会被唤醒以执行那个回调。
