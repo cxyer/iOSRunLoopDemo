@@ -21,7 +21,9 @@
 
 - (NSArray *)dataArr {
     if (!_dataArr) {
-        _dataArr = @[@"scheduledTimer",@"timer",@"timer(UIScrollView)"];
+        _dataArr = @[@"scheduledTimer",
+                     @"timer",
+                     @"timer(UIScrollView)"];
     }
     return _dataArr;
 }
@@ -54,13 +56,9 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:true];
     
-    if (indexPath.row == 0) {
-        [self test1];
-    } else if (indexPath.row == 1) {
-        [self test2];
-    } else if (indexPath.row == 2) {
-        [self test3];
-    }
+    NSString *selName = [NSString stringWithFormat:@"test%ld",indexPath.row+1];
+    SEL sel = NSSelectorFromString(selName);
+    [self performSelector:sel];
 }
 
 - (void)timerAction {
