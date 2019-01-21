@@ -58,7 +58,7 @@ typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
 ![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_0.png)
 现在有点理解为什么要这样设计了。如果当前处于左边的Mode，右边的Mode触发事件，那么此时系统是不会去处理的，起到屏蔽作用？？？？
 
-UIScrollView和NSTimer：之前学习就知道滑动UIScrollView时，NSTimer是不会触发的，需要把NSTimer加入到NSRunLoopCommonModes。现在知道原理了，创建NSTimer时处于NSDefaultRunLoopModes，此时若滑动UIScrollView，RunLoop会切换到UITrackingRunLoopMode，自然就不会响应NSTimer的回调
+UIScrollView和NSTimer：之前学习就知道滑动UIScrollView时，NSTimer是不会触发的，需要把NSTimer加入到NSRunLoopCommonModes。现在知道原理了，创建NSTimer时处于NSDefaultRunLoopModes，此时若滑动UIScrollView，RunLoop会切换到UITrackingRunLoopMode，自然就不会响应NSTimer的回调
 
 常驻线程：为当前线程开启一个RunLoop->向该RunLoop添加一个Source或Port以维持事件循环->启动RunLoop
 
@@ -68,7 +68,7 @@ UIScrollView和NSTimer：之前学习就知道滑动UIScrollView时，NSTimer是
 
 需要注意的是，NSRunLoopCommonModes能同步Source/Observe/Timer到多个Mode，不是实际存在的一种Mode
 ## RunLoop的内部逻辑
-放一张原文章的图
+放一张原文章的图
 ![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_1.png)
 所以对于一个APP，从点击图标到结束应用的大致流程，我的理解如下：main->UIApplicationMain->创建主线程RunLoop->图上第1步->图上2~9步循环->图上第10步->结束
 ## RunLoop的底层实现
