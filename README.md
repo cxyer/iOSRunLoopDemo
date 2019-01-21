@@ -1,103 +1,22 @@
 # RunLoop
-学习ibireme的文章[深入理解RunLoop](https://blog.ibireme.com/2015/05/18/runloop/)，对RunLoop有了大致的了解。以下内容对原文进行了摘抄。
-## 基本概要
-一般来讲，一个线程一次只能执行一个任务，执行完成后线程就会退出。我们需要一个机制，让线程能随时处理事件但并不退出。逻辑是这样的：
-```
-function loop() {
-    initialize();
-    do {
-        var message = get_next_message();
-        process_message(message);
-    } while (message != quit);
-}
-```
-这种模型通常被称作 Event Loop，在iOS中称为RunLoop。这种模型的关键在于：如何管理事件/消息，如何让线程在没有处理消息时休眠以避免资源占用、在有消息到来时立刻被唤醒。
+ibireme的文章[深入理解RunLoop](https://blog.ibireme.com/2015/05/18/runloop/)，看完后一脸懵逼，怀疑人生了。。。。以下内容摘抄与理解
+## RunLoop的概念
+RunLoop是通过事件循环来对事件和消息进行管理的一个对象
 
-所以，RunLoop 实际上就是一个对象，这个对象管理了其需要处理的事件和消息，并提供了一个入口函数来执行上面 Event Loop 的逻辑。线程执行了这个函数后，就会一直处于这个函数内部 “接受消息->等待->处理” 的循环中，直到这个循环结束（比如传入 quit 的消息），函数返回。
+事件循环：线程在没有处理消息时休眠以避免资源占用、在有消息到来时立刻被唤醒（大二学过操作系统，前者应该是从用户态切换到内核态，后者是从内核态切换到用户态）
 
-在iOS中，提供了两个对象：NSRunLoop 和 CFRunLoopRef
-* CFRunLoopRef 是在 CoreFoundation 框架内的，它提供了纯 C 函数的 API，所有这些 API 都是线程安全的。
-* NSRunLoop 是基于 CFRunLoopRef 的封装，提供了面向对象的 API，但是这些 API 不是线程安全的。
-## 与线程的关系
-Runloop与线程是一一对应的关系，这种关系存在一张全局字典里：
+现在有点理解```main```为什么不会退出了
 ```objc
-/// 全局的Dictionary，key 是 pthread_t， value 是 CFRunLoopRef
-static CFMutableDictionaryRef loopsDic;
-/// 访问 loopsDic 时的锁
-static CFSpinLock_t loopsLock;
- 
-/// 获取一个 pthread 对应的 RunLoop。
-CFRunLoopRef _CFRunLoopGet(pthread_t thread) {
-    OSSpinLockLock(&loopsLock);
-    
-    if (!loopsDic) {
-        // 第一次进入时，初始化全局Dic，并先为主线程创建一个 RunLoop。
-        loopsDic = CFDictionaryCreateMutable();
-        CFRunLoopRef mainLoop = _CFRunLoopCreate();
-        CFDictionarySetValue(loopsDic, pthread_main_thread_np(), mainLoop);
+int main(int argc, char * argv[]) {
+    @autoreleasepool {
+        return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
     }
-    
-    /// 直接从 Dictionary 里获取。
-    CFRunLoopRef loop = CFDictionaryGetValue(loopsDic, thread));
-    
-    if (!loop) {
-        /// 取不到时，创建一个
-        loop = _CFRunLoopCreate();
-        CFDictionarySetValue(loopsDic, thread, loop);
-        /// 注册一个回调，当线程销毁时，顺便也销毁其对应的 RunLoop。
-        _CFSetTSD(..., thread, loop, __CFFinalizeRunLoop);
-    }
-    
-    OSSpinLockUnLock(&loopsLock);
-    return loop;
 }
 ```
-线程刚创建时并没有 RunLoop，如果你不主动获取，那它一直都不会有。RunLoop 的创建是发生在第一次获取时，RunLoop 的销毁是发生在线程结束时。你只能在一个线程的内部获取其 RunLoop（主线程除外）。
-
-苹果不允许直接创建 RunLoop，只能通过以下两个函数获取：
-```objc
-CFRunLoopRef CFRunLoopGetMain() {
-    return _CFRunLoopGet(pthread_main_thread_np());
-}
-CFRunLoopRef CFRunLoopGetCurrent() {
-    return _CFRunLoopGet(pthread_self());
-}
-```
-## 对外接口
-在 CoreFoundation 里面关于RunLoop有5类：
-1. CFRunLoopRef
-1. CFRunLoopModeRef
-1. CFRunLoopSourceRef
-1. CFRunLoopTimerRef
-1. CFRunLoopObserverRef
-
-![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_0.png)
-一个 RunLoop 包含若干个 Mode，每个 Mode 又包含若干个 Source/Timer/Observer。每次调用 RunLoop 的主函数时，只能指定其中一个 Mode，这个Mode被称作 CurrentMode。如果需要切换 Mode，只能退出 Loop，再重新指定一个 Mode 进入。这样做主要是为了分隔开不同组的 Source/Timer/Observer，让其互不影响
-### CFRunLoopModeRef
-* 并没有对外暴露，只是通过 CFRunLoopRef 的接口进行了封装
-### CFRunLoopSourceRef
-* 是事件产生的地方
-* Source分为Source0 和 Source1
-    * Source0只包含一个回调，并不能主动触发事件。使用时需要先手动将其标记为待处理，然后唤醒RunLoop进行处理。
-    * Source1包含一个回调和mach_port，能主动唤醒RunLoop，用于通过内核和其他线程相互发送消息
-### CFRunLoopTimerRef
-* 基于时间的触发器，它和 NSTimer 是toll-free bridged 的，可以混用
-* 包含一个时间长度和一个回调（函数指针）。当其加入到 RunLoop 时，RunLoop会注册对应的时间点，当时间点到时，RunLoop会被唤醒以执行那个回调。
-### CFRunLoopObserverRef
-* 观察者
-* 包含一个回调，当RunLoop的状态改变时，就能通过这个回调通知外部
-```objc
-typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
-    kCFRunLoopEntry         = (1UL << 0), // 即将进入Loop
-    kCFRunLoopBeforeTimers  = (1UL << 1), // 即将处理 Timer
-    kCFRunLoopBeforeSources = (1UL << 2), // 即将处理 Source
-    kCFRunLoopBeforeWaiting = (1UL << 5), // 即将进入休眠
-    kCFRunLoopAfterWaiting  = (1UL << 6), // 刚从休眠中唤醒
-    kCFRunLoopExit          = (1UL << 7), // 即将退出Loop
-};
-```
-## Mode
-CFRunLoopMode 和 CFRunLoop 的结构大致如下：
+```UIApplicationMain```内部启动了一个RunLoop
+## RunLoop与线程的关系
+线程和 RunLoop 之间是一一对应的，其关系是保存在一个全局的 Dictionary 里。线程刚创建时并没有 RunLoop，如果你不主动获取，那它一直都不会有。RunLoop 的创建是发生在第一次获取时，RunLoop 的销毁是发生在线程结束时。你只能在一个线程的内部获取其 RunLoop（主线程除外）。
+## RunLoop的数据结构
 ```objc
 struct __CFRunLoopMode {
     CFStringRef _name;            // Mode Name, 例如 @"kCFRunLoopDefaultMode"
@@ -116,22 +35,47 @@ struct __CFRunLoop {
     ...
 };
 ```
-这里有个概念叫 “CommonModes”：一个 Mode 可以将自己标记为”Common”属性（通过将其 ModeName 添加到 RunLoop 的 “commonModes” 中）。每当 RunLoop 的内容发生变化时，RunLoop 都会自动将 _commonModeItems 里的 Source/Observer/Timer 同步到具有 “Common” 标记的所有Mode里。
+* ```_commonModes```存放的是字符串，```_modes```存放的是RunLoopMode，从这里可以看出RunLoop与RunLoopMode是一对多的关系，RunLoopMode与RunLoopSource、RunLoopTimer、RunLoopObserver也是一对多的关系
+### CFRunLoopSourceRef
+事件产生的地方
+* source0：需要手动唤醒线程，触发回调
+* source1：主动唤醒线程，触发回调
+### CFRunLoopTimerRef
+基于时间的触发器，它和 NSTimer 是toll-free bridged 的，可以混用。在指定时间唤醒线程触发回调
+### CFRunLoopObserverRef
+观察者。当 RunLoop 的状态发生变化时，观察者就能通过回调接受到这个变化
+```objc
+typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
+    kCFRunLoopEntry         = (1UL << 0), // 即将进入Loop
+    kCFRunLoopBeforeTimers  = (1UL << 1), // 即将处理 Timer
+    kCFRunLoopBeforeSources = (1UL << 2), // 即将处理 Source
+    kCFRunLoopBeforeWaiting = (1UL << 5), // 即将进入休眠
+    kCFRunLoopAfterWaiting  = (1UL << 6), // 刚从休眠中唤醒
+    kCFRunLoopExit          = (1UL << 7), // 即将退出Loop
+};
+```
+### CFRunLoopModeRef
+![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_0.png)
+现在有点理解为什么要这样设计了。如果当前处于左边的Mode，右边的Mode触发事件，那么此时系统是不会去处理的，起到屏蔽作用？？？？
 
-应用场景举例：主线程的 RunLoop 里有两个预置的 Mode：kCFRunLoopDefaultMode 和 UITrackingRunLoopMode。这两个 Mode 都已经被标记为”Common”属性。DefaultMode 是 App 平时所处的状态，TrackingRunLoopMode 是追踪 ScrollView 滑动时的状态。当你创建一个 Timer 并加到 DefaultMode 时，Timer 会得到重复回调，但此时滑动一个TableView时，RunLoop 会将 mode 切换为 TrackingRunLoopMode，这时 Timer 就不会被回调，并且也不会影响到滑动操作。
+UIScrollView和NSTimer：之前学习就知道滑动UIScrollView时，NSTimer是不会触发的，需要把NSTimer加入到NSRunLoopCommonModes。现在知道原理了，创建NSTimer时处于NSDefaultRunLoopModes，此时若滑动UIScrollView，RunLoop会切换到UITrackingRunLoopMode，自然就不会响应NSTimer的回调
 
-有时你需要一个 Timer，在两个 Mode 中都能得到回调，一种办法就是将这个 Timer 分别加入这两个 Mode。还有一种方式，就是将 Timer 加入到顶层的 RunLoop 的 “commonModeItems” 中。”commonModeItems” 被 RunLoop 自动更新到所有具有”Common”属性的 Mode 里去。
-## 内部逻辑
+常驻线程：为当前线程开启一个RunLoop->向该RunLoop添加一个Source或Port以维持事件循环->启动RunLoop
+
+苹果公开提供的 Mode 有两个：kCFRunLoopDefaultMode (NSDefaultRunLoopMode) 和 UITrackingRunLoopMode，你可以用这两个 Mode Name 来操作其对应的 Mode。
+
+同时苹果还提供了一个操作 Common 标记的字符串：kCFRunLoopCommonModes (NSRunLoopCommonModes)，你可以用这个字符串来操作 Common Items，或标记一个 Mode 为 “Common”。使用时注意区分这个字符串和其他 mode name。
+
+需要注意的是，NSRunLoopCommonModes能同步Source/Observe/Timer到多个Mode，不是实际存在的一种Mode
+## RunLoop的内部逻辑
+放一张原文章的图
 ![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_1.png)
-内部代码请看原文。实际上RunLoop内部是一个 do-while 循环。当你调用 CFRunLoopRun() 时，线程就会一直停留在这个循环里；直到超时或被手动停止，该函数才会返回。
-## 底层实现
-详细的介绍见原文
+所以对于一个APP，从点击图标到结束应用的大致流程，我的理解如下：main->UIApplicationMain->创建主线程RunLoop->图上第1步->图上2~9步循环->图上第10步->结束
+## RunLoop的底层实现
+看原文吧
 
-总的来说就是，Mach 的对象间不能直接调用，只能通过消息传递的方式实现对象间的通信。”消息”是 Mach 中最基础的概念，消息在两个端口 (port) 之间传递，这就是 Mach 的 IPC (进程间通信) 的核心。
-
-发送和接受消息是通过mach_msg() 函数
-
-RunLoop 的核心就是一个 mach_msg()，RunLoop 调用这个函数去接收消息，如果没有别人发送 port 消息过来，内核会将线程置于等待状态。例如你在模拟器里跑起一个 iOS 的 App，然后在 App 静止时点击暂停，你会看到主线程调用栈是停留在 mach_msg_trap() 这个地方。
+核心就这张图
+![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_5.png)
 ## 苹果使用RunLoop实现的功能
 ### Autorelease Pool
 有一篇我之前的笔记[Autorelease](https://github.com/cxyer/iOSNote/wiki/Autorelease)，学习RunLoop后对Autorelease有了更深的理解。
@@ -168,6 +112,12 @@ CADisplayLink 是一个和屏幕刷新率一致的定时器（但实际实现原
 GCD 提供的某些接口也用到了 RunLoop， 例如 dispatch_async()。
 
 当调用 dispatch_async(dispatch_get_main_queue(), block) 时，libDispatch 会向主线程的 RunLoop 发送消息，RunLoop会被唤醒，并从消息中取得这个 block，并在回调 __CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__() 里执行这个 block。但这个逻辑仅限于 dispatch 到主线程，dispatch 到其他线程仍然是由 libDispatch 处理的。
+### 关于网络请求
+通常使用 NSURLConnection 时，你会传入一个 Delegate，当调用了 [connection start] 后，这个 Delegate 就会不停收到事件回调。实际上，start 这个函数的内部会会获取 CurrentRunLoop，然后在其中的 DefaultMode 添加了4个 Source0 (即需要手动触发的Source)。CFMultiplexerSource 是负责各种 Delegate 回调的，CFHTTPCookieStorage 是处理各种 Cookie 的。
+
+当开始网络传输时，我们可以看到 NSURLConnection 创建了两个新线程：com.apple.NSURLConnectionLoader 和 com.apple.CFSocket.private。其中 CFSocket 线程是处理底层 socket 连接的。NSURLConnectionLoader 这个线程内部会使用 RunLoop 来接收底层 socket 的事件，并通过之前添加的 Source0 通知到上层的 Delegate。
+![](https://blog.ibireme.com/wp-content/uploads/2015/05/RunLoop_network.png)
+NSURLConnectionLoader 中的 RunLoop 通过一些基于 mach port 的 Source 接收来自底层 CFSocket 的通知。当收到通知后，其会在合适的时机向 CFMultiplexerSource 等 Source0 发送通知，同时唤醒 Delegate 线程的 RunLoop 来让其处理这些通知。CFMultiplexerSource 会在 Delegate 线程的 RunLoop 对 Delegate 执行实际的回调。
 ## 实际应用举例
 ### AFNetworking(这个例子应该是3.0之前的，底层是通过封装NSURLConnection实现的，不过实现思想还是很重要的)
 AFURLConnectionOperation 这个类是基于 NSURLConnection 构建的，其希望能在后台线程接收 Delegate 回调。为此 AFNetworking 单独创建了一个线程，并在这个线程中启动了一个 RunLoop：
